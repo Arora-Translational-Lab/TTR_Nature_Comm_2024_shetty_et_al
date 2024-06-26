@@ -1,0 +1,100 @@
+**Table 2;
+PROC STANDARD DATA=ntbnp_clin_cor_1234 MEAN=0 STD=1 OUT=nt_clinical_corr;
+  VAR  std_sbp std_dbp std_bmi std_age std_chol std_log_alb std_log_trigly 
+std_log_creat std_log_crp;
+RUN;*/;
+
+PROC glm DATA=nt_clinical_corr ; 
+class p31 (ref="1") ttr_neg(ref="0");
+MODEL npx= std_sbp p31 std_dbp std_bmi std_age std_chol std_log_alb std_log_trigly ttr_neg
+std_log_creat std_log_crp /SOLUTION  clparm; 
+RUN;
+
+**Table 3;
+***Frequency;
+**npx_rank is binary variable denoting Low and High level of TTR levels;
+
+proc freq data = analyis_final;tables npx_rank*inc_hf;run;
+
+proc freq data = analyis_final;tables npx_rank*inc_cvd;run;
+proc freq data = analyis_final;tables npx_rank*inc_ascvd;run;
+
+proc freq data = analyis_final;tables npx_rank*death_;run;
+proc freq data = analyis_final;tables npx_rank*cv_death;run;
+
+** Incidence rate;
+
+
+%macro IRR (dataset,event_var,offset_var,var,restricted,predictor);
+
+PROC SORT DATA=&dataset  ;BY &predictor ;RUN;
+ ods exclude all;
+ods output Estimates=Output; 
+proc genmod data=&dataset; 
+by &predictor;
+class eid &predictor;
+model &event_var = / type3 dist=poisson offset=&offset_var;
+repeated subject=eid;
+estimate " Incidence Rates BY &predictor" intercept 1/exp;
+/*TITLE "OVERALL: Crude &var Incidence Rates BY HTN RX GROUPS";*/
+run;
+TITLE;
+ods exclude none;
+data Output ;
+   set Output;
+   keep &predictor   MeanEstimate  MeanLowerCL MeanUpperCL ProbChiSq ;
+  if mod(_n_,2) = 1;
+run;
+title "Incidence Rates for &var &restricted. ";
+proc print data=Output;
+run;
+%mend IRR;
+
+data analyis_final_;set analyis_final;
+logdeathyr_u=(log(tot_tty_death/1000));
+ logHFyr_u=(log(tot_tty_hf_/1000));
+ logascvdyr_u=(log(tot_tty_ascvd_/1000));
+logcvdyr_u=(log(tot_tty_cvd_/1000));run;
+
+
+%IRR(dataset=analyis_final_,event_var=inc_hf,offset_var=logHFyr_u,var=HF,restricted="10 year censored",predictor=npx_rank);
+%IRR(dataset=analyis_final_,event_var=inc_ascvd,offset_var=logascvdyr_u,var=HF,restricted="10 year censored",predictor=npx_rank);
+%IRR(dataset=analyis_final_,event_var=inc_cvd,offset_var=logcvdyr_u,var=HF,restricted="10 year censored",predictor=npx_rank);
+%IRR(dataset=analyis_final_,event_var=death_,offset_var=logdeathyr_u,var=HF,restricted="10 year censored",predictor=npx_rank);
+%IRR(dataset=analyis_final_,event_var=cv_death,offset_var=logdeathyr_u,var=HF,restricted="10 year censored",predictor=npx_rank);
+
+
+***Figure 4;
+
+proc phreg data=analyis_final ;
+class p31  chol_low_med bp_low_med  smoking_status DIABETES;
+model tot_tty_hf_*inc_hf(0) = npx_lod_std p31  p21022 DIABETES townsend_index bmi sbp_ eGFR chol_low_med bp_low_med tot_chol_mgdl smoking_status;
+hazardratio npx_lod_std;
+run;
+
+
+proc phreg data=analyis_final ;
+class p31  chol_low_med bp_low_med  smoking_status DIABETES;
+model tot_tty_ascvd_*inc_ascvd(0) = npx_lod_std p31  p21022 DIABETES townsend_index bmi sbp_ eGFR chol_low_med bp_low_med tot_chol_mgdl smoking_status;
+hazardratio npx_lod_std;
+run;
+
+proc phreg data=analyis_final ;
+class p31  chol_low_med bp_low_med  smoking_status DIABETES;
+model tot_tty_cvd_*inc_cvd(0) = npx_lod_std p31  p21022 DIABETES townsend_index bmi sbp_ eGFR chol_low_med bp_low_med tot_chol_mgdl smoking_status;
+hazardratio npx_lod_std;
+run;
+
+
+proc phreg data=analyis_final ;
+class p31  chol_low_med bp_low_med  smoking_status DIABETES;
+model tot_tty_death*death_(0) = npx_lod_std p31  p21022 DIABETES townsend_index bmi sbp_ eGFR chol_low_med bp_low_med tot_chol_mgdl smoking_status;
+hazardratio npx_lod_std;
+run;
+
+proc phreg data=analyis_final ;
+class p31  chol_low_med bp_low_med  smoking_status DIABETES;
+model tot_tty_death*cv_death(0) = npx_lod_std p31  p21022 DIABETES townsend_index bmi sbp_ eGFR chol_low_med bp_low_med tot_chol_mgdl smoking_status;
+hazardratio npx_lod_std;
+run;
+
